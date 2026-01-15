@@ -15,7 +15,7 @@ class CNN(nn.Module):
     
     def __init__(self):
         super().__init__()
-        self.network = nn.Sequential([
+        self.network = nn.Sequential(
             # First conv layer
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1, stride=1),
             nn.ReLU(),
@@ -37,7 +37,7 @@ class CNN(nn.Module):
             # Linear (Dense) layers
             # Output layer
             nn.Linear(in_features=1024, out_features=10)
-        ])
+        )
     
     def forward(self, x):
         return self.network(x)

@@ -13,3 +13,9 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Dataset
+data/cifar-10-batches-py
+.data/cifar-10-batches-py
+
+*.gz
