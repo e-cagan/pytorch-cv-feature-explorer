@@ -4,6 +4,7 @@ Module for training the model.
 
 import torch
 import torch.nn as nn
+import csv
 
 from models.cnn import CNN
 from data.dataset import train_dataloader, val_dataloader
@@ -17,7 +18,7 @@ model.to(device=device)
 # Take the loss function and optimizer to optimize gradients
 optimizer = torch.optim.Adam(params=model.parameters(), lr=0.001)
 loss_fn = nn.CrossEntropyLoss()
-EPOCHS = 10
+EPOCHS = 20
 
 
 # Define the validation function
@@ -65,6 +66,9 @@ def train():
 
     best_val_accuracy = -1.0
     running_loss = 0.0
+
+    # Add history to keep logs
+    history = []
 
     # Iterate trough epochs
     for epoch in range(EPOCHS):
@@ -115,6 +119,15 @@ def train():
             f"Val Loss: {val_loss:.4f} Acc: {val_accuracy:.4f}"
         )
 
+        # Add credentials to history
+        history.append({
+            "epoch": epoch+1,
+            "train_loss": train_loss,
+            "train_accuracy": train_accuracy,
+            "validation_loss": val_loss,
+            "validation_accuracy": val_accuracy,
+        })
+
          # Model checkpoint based on validation accuracy
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
@@ -123,6 +136,14 @@ def train():
 
     # Inform the user about best val acc
     print(f"Best validation accuracy: {best_val_accuracy:.4f}")
+
+    # Convert history to csv file to read better in the future
+    with open('outputs/logs/metrics.csv', 'w', newline='') as csvfile:
+        fieldnames = ['epoch', 'train_loss', 'train_accuracy', 'validation_loss', 'validation_accuracy']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(history)
+    print("Metric log file saved successfully to outputs/logs/metrics.csv")
 
 
 if __name__ == '__main__':
