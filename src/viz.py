@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 import random
+import math
 from sklearn.metrics import confusion_matrix
 
 from models.cnn import CNN
@@ -205,10 +206,94 @@ def plot_misclassified_examples(model, dataloader):
     return
 
 
+# Define a function for visualizing feature maps for CNN
+def visualize_feature_maps(model, image, max_channels=16):
+    """
+    Function for visualizing feature maps.
+
+    model -> Model to visualize
+
+    image -> Image
+
+    max_channels -> Max channels to visualize for plotting purposes
+    """
+
+    # Ensure image has batch dimension and is on correct device
+    if image.dim() == 3:
+        # (C,H,W) -> (1,C,H,W)
+        x = image.unsqueeze(0).to(device)
+    elif image.dim() == 4:
+        # (B,C,H,W) -> take first sample to keep it clean
+        x = image[:1].to(device)
+    else:
+        raise ValueError(f"Unexpected image shape: {tuple(image.shape)}")
+    
+    with torch.no_grad():
+        # Walk through all layers in Sequential
+        for idx, layer in enumerate(model.network):
+            x = layer(x)
+
+            # Only visualize if it's feature-map-like: (1, C, H, W)
+            if x.dim() != 4:
+                continue
+
+            # x: (1, C, H, W)
+            feat = x[0]  # (C, H, W)
+            C = feat.shape[0]
+            n_show = min(C, max_channels)
+
+            # Grid size
+            cols = int(math.ceil(math.sqrt(n_show)))
+            rows = int(math.ceil(n_show / cols))
+
+            fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.2, rows * 2.2))
+            # axes could be a single Axes, normalize to list
+            if rows * cols == 1:
+                axes = [axes]
+            else:
+                axes = axes.flatten()
+
+            # Plot first n_show channels
+            for ch in range(n_show):
+                fm = feat[ch].detach().cpu()
+
+                # Normalize per-feature-map for visibility
+                fm_min = fm.min()
+                fm_max = fm.max()
+                if (fm_max - fm_min) > 1e-6:
+                    fm = (fm - fm_min) / (fm_max - fm_min)
+
+                axes[ch].imshow(fm)
+                axes[ch].axis("off")
+                axes[ch].set_title(f"ch {ch}", fontsize=8)
+
+            # Turn off remaining axes if grid has empty slots
+            for k in range(n_show, rows * cols):
+                axes[k].axis("off")
+
+            layer_name = layer.__class__.__name__
+            fig.suptitle(f"Layer {idx}: {layer_name} | out={tuple(x.shape)}", fontsize=10)
+            fig.tight_layout()
+            
+            out_path = f"outputs/featuremaps/layer_{idx:02d}_{layer_name}.png"
+            plt.savefig(out_path, dpi=150)
+
+        # INFO
+        print("Results saved to outputs/featuremaps")
+
+    return
+
+
 # Testing out the visualization functions
 if __name__ == '__main__':
     
     # For now test out the learning curves, confusion matrix and misclassified examples
-    plot_learning_curves(filepath='outputs/logs/metrics.csv')
-    plot_confusion_matrix(model=model, dataloader=test_dataloader)
-    plot_misclassified_examples(model=model, dataloader=test_dataloader)
+    # plot_learning_curves(filepath='outputs/logs/metrics.csv')
+    # plot_confusion_matrix(model=model, dataloader=test_dataloader)
+    # plot_misclassified_examples(model=model, dataloader=test_dataloader)
+    
+    # Try out the feature map visualization
+    images, labels = next(iter(test_dataloader)) # Single batch
+    idx = random.randrange(images.size(0)) # Random index
+    image = images[idx] # (C,H,W)
+    visualize_feature_maps(model=model, image=image, max_channels=16)
