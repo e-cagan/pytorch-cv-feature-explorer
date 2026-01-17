@@ -284,6 +284,121 @@ def visualize_feature_maps(model, image, max_channels=16):
     return
 
 
+# Define a function to visualize conv1 filters
+def visualize_conv1_filters(model):
+    """
+    Function for visualizing conv1 filters (first Conv2d weights).
+    """
+
+    # Find first Conv2d layer
+    conv1 = None
+    for layer in model.network:
+        if isinstance(layer, torch.nn.Conv2d):
+            conv1 = layer
+            break
+
+    if conv1 is None:
+        raise ValueError("No Conv2d layer found in model.network")
+
+    # weights: (out_channels, in_channels, kH, kW)
+    w = conv1.weight.detach().cpu()  # (16, 3, 3, 3)
+
+    out_ch = w.shape[0]
+    cols = int(math.ceil(math.sqrt(out_ch)))
+    rows = int(math.ceil(out_ch / cols))
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.0, rows * 2.0))
+    axes = axes.flatten() if rows * cols > 1 else [axes]
+
+    for i in range(rows * cols):
+        ax = axes[i]
+        ax.axis("off")
+
+        if i >= out_ch:
+            continue
+
+        filt = w[i]  # (3, kH, kW)
+        filt = filt.permute(1, 2, 0).numpy()  # (kH, kW, 3)
+
+        # normalize for visualization
+        fmin, fmax = filt.min(), filt.max()
+        if (fmax - fmin) > 1e-6:
+            filt = (filt - fmin) / (fmax - fmin)
+
+        ax.imshow(filt)
+        ax.set_title(f"f{i}", fontsize=8)
+
+    plt.suptitle("Conv1 Filters", fontsize=12)
+    plt.tight_layout()
+    plt.savefig("outputs/plots/conv1_filters.png", dpi=200)
+    
+    # INFO
+    print("Plot saved to outputs/plots as conv1_filters.png")
+
+    return
+
+
+# Define a function for visualizing saliency map
+def visualize_saliency(model, image, label):
+    """
+    Saliency map visualization for a single image and a target label.
+    image: (C,H,W) tensor (normalized as model expects)
+    label: int (true label or any target class you want)
+    """
+
+    model.eval()
+
+    # (C,H,W) -> (1,C,H,W)
+    x = image.unsqueeze(0).to(device)
+    x.requires_grad_(True)
+
+    model.zero_grad()
+
+    outputs = model(x)  # (1,10)
+    score = outputs[0, int(label)]  # scalar for that class
+    score.backward()
+
+    # gradient wrt input: (1,C,H,W) -> (C,H,W)
+    grad = x.grad.detach()[0]  # (C,H,W)
+
+    # saliency: max over channels
+    sal = grad.abs().max(dim=0)[0]  # (H,W)
+    sal = sal.cpu().numpy()
+
+    # normalize to [0,1] for plotting
+    sal_min, sal_max = sal.min(), sal.max()
+    if (sal_max - sal_min) > 1e-8:
+        sal = (sal - sal_min) / (sal_max - sal_min)
+
+    # prepare original image for display (denormalize)
+    img = image.permute(1, 2, 0).cpu().numpy()  # (H,W,3)
+    img = (img * CIFAR10_STD) + CIFAR10_MEAN
+    img = np.clip(img, 0, 1)
+
+    pred = torch.argmax(outputs, dim=1).item()
+
+    plt.figure(figsize=(10, 4))
+
+    plt.subplot(1, 2, 1)
+    plt.imshow(img)
+    plt.axis("off")
+    plt.title(f"True: {CIFAR10_CLASSES[int(label)]} | Pred: {CIFAR10_CLASSES[pred]}")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(img)
+    plt.imshow(sal, cmap="hot", alpha=0.45)  # overlay
+    plt.axis("off")
+    plt.title("Saliency (overlay)")
+
+    plt.tight_layout()
+    plt.savefig("outputs/plots/saliency.png", dpi=200)
+    
+    # INFO
+    print("Plot saved to outputs/plots as saliency.png")
+
+    return
+
+
 # Testing out the visualization functions
 if __name__ == '__main__':
     
@@ -296,4 +411,8 @@ if __name__ == '__main__':
     images, labels = next(iter(test_dataloader)) # Single batch
     idx = random.randrange(images.size(0)) # Random index
     image = images[idx] # (C,H,W)
-    visualize_feature_maps(model=model, image=image, max_channels=16)
+    label = labels[idx].item()
+
+    # visualize_feature_maps(model=model, image=image, max_channels=16)
+    visualize_conv1_filters(model=model)
+    visualize_saliency(model=model, image=image, label=label)
